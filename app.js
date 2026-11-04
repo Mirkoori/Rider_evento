@@ -401,7 +401,7 @@
     var chIn = mixSala && micSala ? ch - mics : ch; /* i microfoni della sala sono già sul loro mixer */
     if (chIn > 0) A.push(mixSala
       ? "Usiamo il mixer della sala: verificare modello e almeno " + chIn + " ingressi liberi (" + (micSala ? "PC, musica e collegamenti" : "microfoni, PC e musica") + ")"
-      : "Mixer audio digitale con almeno " + (ch + 2) + " ingressi (microfoni, PC e scorta)");
+      : "Mixer audio digitale con almeno " + ch + " ingressi (microfoni, PC e musica)");
     if (paSala && !mixSala && ch > 0) A.push("Collegamento dal nostro mixer all'impianto della sala: verificare ingressi e tipo di linea (XLR, jack o altro)");
     if (micSala && mics > 0) A.push("Microfoni forniti dalla sala: " + fmt(fieldByKey("mic"), d.mic) + ". Verificare tipo, funzionamento e batterie");
     else {
@@ -411,7 +411,6 @@
       if (tav) A.push("Microfoni da tavolo a filo × " + tav + ", con basi, aste e cavi XLR");
       if (wl) {
         A.push("Ricevitori wireless × " + wl + ", con antenne e distribuzione RF (frequenze da coordinare con la sala)");
-        A.push("Batterie di scorta e caricabatterie per tutti i trasmettitori");
       }
     }
     var pcs = (pcAudio ? 1 : 0) + (csl ? 1 : 0) + (musica ? 1 : 0);
@@ -439,19 +438,19 @@
     else if (/nostro/.test(d.schermo || "")) V.push("Proiettore, telo, treppiede o supporti, cavi video e prolunghe");
     if (/LED/.test(d.schermo || "")) V.push(scrSala ? "Videowall o schermi della sala: verificare ingressi, risoluzione e collegamento" : "Videowall LED con processore, strutture o supporti, cavi dati e alimentazione");
     else if (scrSala && !projSala) V.push("Schermi della sala: verificare ingressi e collegamento");
-    var vin = 1 + (csl ? 1 : 0) + (vcall ? 1 : 0) + (cam ? 1 : 0) + (graf ? 1 : 0) + 1;
+    var vin = 1 + (csl ? 1 : 0) + (vcall ? 1 : 0) + (cam ? 1 : 0) + (graf ? 1 : 0);
     if (regiaSala) V.push("Usiamo la regia video della sala: verificare modello e almeno " + vin + " ingressi liberi, con uscite verso gli schermi");
-    else if (d.transizioni === "Sì") V.push("Mixer video o switcher con almeno " + vin + " ingressi (PC, sorgenti e scorta), per passaggi puliti tra le sorgenti");
+    else if (d.transizioni === "Sì") V.push("Mixer video o switcher con almeno " + vin + " ingressi (PC e sorgenti), per passaggi puliti tra le sorgenti");
     else if (d.transizioni === "No") V.push("Niente mixer video: cambio sorgente diretto dal PC o con selettore HDMI (i cambi si vedranno sugli schermi)");
     if (csl) V.push("Secondo PC per il centro slide, con monitor di controllo");
-    if (d.avanzatore === "Sì") V.push("Avanzatore slide × 2, con ricevitore USB e pile di scorta");
+    if (d.avanzatore === "Sì") V.push("Avanzatore slide × 1, con ricevitore USB");
     if (/^Visuale relatore/.test(d.visuale || "")) V.push("Segnale dedicato al relatore: splitter o matrice per mandargli uno schermo diverso da quello della sala");
     if (/^Copia/.test(d.visuale || "")) V.push("Splitter video per mandare al relatore la stessa immagine della sala");
     if (/Lontana/.test(d.regia || "")) V.push("Linee lunghe verso la regia (extender HDMI o SDI, multicore o rete audio) e intercom con il palco");
     if (graf) V.push("PC per le grafiche e i sottopancia, con uscita verso il mixer video");
     if (timer) V.push("Timer relatori: software o display dedicato, visibile dal palco");
     if (slido) V.push("PC o tablet in regia per Slido e sondaggi, con connessione internet affidabile");
-    if (sito) V.push("Connessione internet affidabile per le demo dal vivo, con hotspot 4G di scorta");
+    if (sito) V.push("Connessione internet affidabile per le demo dal vivo");
 
     /* Schermi e supporti */
     if (tvL) { S.push("TV × " + tvL + " ai lati del palco"); S.push("Staffe, piantane o carrelli per TV × " + tvL); }
@@ -464,7 +463,7 @@
     /* Collegamenti */
     if (coll) {
       C.push((stream ? "PC di streaming con scheda di acquisizione HDMI e software di diretta" : "PC dedicato alla videocall con interfaccia audio") + (d.piattaforma ? " (" + d.piattaforma + ")" : ""));
-      C.push(sala(d, "Rete") ? "Rete della sala: verificare porta cablata libera, velocità e blocchi (porte aperte per lo streaming), con hotspot 4G di scorta" : "Connessione di rete cablata dedicata, con hotspot 4G di scorta");
+      C.push(sala(d, "Rete") ? "Rete della sala: verificare porta cablata libera, velocità e blocchi (porte aperte per lo streaming)" : "Connessione di rete cablata dedicata");
     }
     if (vcall && /^Bidirezionale/.test(d.direzione || "")) { C.push("Mix-minus audio per evitare l'eco verso chi è collegato"); C.push("Ritorno video dei collegati su uno schermo in sala"); }
     if (vcall && /solo noi/.test(d.direzione || "")) C.push("Uscita audio e video della regia verso il PC di collegamento");
@@ -488,7 +487,6 @@
 
     var groups = [["Audio", A], ["Video e regia", V], ["Schermi e supporti", S], ["Collegamenti e riprese", C], ["Palco e luci", P], ["Altro", X]]
       .filter(function (g) { return g[1].length; });
-    if (groups.length) groups.push(["Kit generale", ["Gaffer, ciabatte e prolunghe, cavi XLR, HDMI e di rete di scorta, adattatori HDMI, USB-C e DisplayPort, torcia"]]);
     return groups.map(function (g) { return { title: g[0], items: g[1] }; });
   }
 
@@ -501,7 +499,7 @@
     h += "</div>";
     var dot = dotazione();
     if (dot.length) {
-      h += '<div class="card doc"><h2>Dotazione suggerita</h2><p class="hint">Calcolata dalle risposte, per i tecnici. Da controllare prima del carico.</p>';
+      h += '<div class="card doc"><h2>Dotazione suggerita</h2><p class="hint">Solo ciò che serve davvero, calcolato dalle risposte. Scorte e backup li decidono i tecnici.</p>';
       dot.forEach(function (g) {
         h += "<section><h3>" + esc(g.title) + '</h3><ul class="eq">' + g.items.map(function (it) { return "<li>" + esc(it) + "</li>"; }).join("") + "</ul></section>";
       });
