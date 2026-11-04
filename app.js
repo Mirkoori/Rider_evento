@@ -96,7 +96,20 @@
   function esc(s) { return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]; }); }
 
   var saveTimer = null;
+  /* Tempo di compilazione: somma degli intervalli tra una modifica e l'altra, le pause lunghe (oltre 1 minuto) non contano. */
+  function tick() {
+    var now = Date.now();
+    if (typeof d.t_attivo !== "number") d.t_attivo = 0;
+    if (d.t_ultimo && now - d.t_ultimo < 60000) d.t_attivo += now - d.t_ultimo;
+    d.t_ultimo = now;
+  }
+  function tempoCompilazione() {
+    if (!d.t_ultimo) return "";
+    var m = Math.round((d.t_attivo || 0) / 60000);
+    return m < 1 ? "meno di 1 minuto" : m + (m === 1 ? " minuto" : " minuti");
+  }
   function save() {
+    tick();
     clearTimeout(saveTimer);
     saveTimer = setTimeout(function () {
       var st = $("#saveState");
@@ -202,6 +215,7 @@
     var ev = [["Evento", d.nome], ["Tipo", d.tipo ? TIPI[d.tipo].nome : ""], ["Agenzia / cliente", d.agenzia], ["Data", fmtDate(d.data)],
       ["Partecipanti", d.pax ? d.pax + " persone" : ""], ["Location", d.location], ["Sala", d.sala],
       ["Referente", [d.ref, d.tel].filter(Boolean).join(", ")], ["Inizio montaggio", d.t_mont], ["Inizio evento", d.t_inizio], ["Fine evento", d.t_fine], ["Fine smontaggio", d.t_smont]];
+    ev.push(["Tempo di compilazione", tempoCompilazione()]);
     out.push({ title: "Evento", rows: ev.filter(function (r) { return r[1]; }) });
     SECTIONS.forEach(function (s) {
       var rows = [];
