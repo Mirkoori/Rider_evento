@@ -253,12 +253,12 @@
       while ((tm = re.exec(cl))) {
         var hh = +(tm[1] || tm[3]), mi = +(tm[2] || tm[4] || 0);
         if (hh > 23 || mi > 59) continue;
-        var from = Math.max(prevEnd, tm.index - 45), win = cl.slice(from, tm.index), kind = "";
+        var from = Math.max(prevEnd, tm.index - 45), win = cl.slice(from, tm.index + tm[0].length), kind = "";
         if (/smontagg|disallest|ritiro/.test(win)) kind = "s";
         else if (/montagg|allestim|set-?up|\bprove\b|\bcarico\b/.test(win)) kind = "m";
         else {
           var pos = { i: -1, f: -1 };
-          var ri = /a partire d|dalle|\bdal\b|inizio|apertura|\bstart\b|accredit/g, rf = /fino a|entro|termin|\bfine\b|chiusur|conclus|circa/g, x;
+          var ri = /a partire d|dalle|\bdal\b|inizio|apertura|\bstart\b|accredit/g, rf = /fino\b|entro|termin|\bfine\b|chiusur|conclus|circa/g, x;
           while ((x = ri.exec(win))) pos.i = x.index;
           while ((x = rf.exec(win))) pos.f = x.index;
           kind = pos.i < 0 && pos.f < 0 ? "" : pos.i > pos.f ? "i" : "f";
