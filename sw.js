@@ -1,6 +1,6 @@
 /* Service worker: mette l'app in cache così si apre anche senza rete.
    Quando cambi i file, aumenta il numero di CACHE. */
-var CACHE = "rider-evento-v8";
+var CACHE = "rider-evento-v9";
 var ASSETS = [
   "./", "index.html", "styles.css", "shim.js", "app.js", "manifest.webmanifest",
   "vendor/jspdf.umd.min.js",

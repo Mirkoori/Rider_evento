@@ -25,7 +25,7 @@ Il sito si pubblica con GitHub Pages: in *Settings → Pages* scegli come Source
 
 ## Aggiornare l'app
 
-Dopo ogni modifica ai file aumenta il numero in `sw.js` (`rider-evento-v8` → `v9`), così chi l'ha installata riceve la versione nuova alla riapertura successiva.
+Dopo ogni modifica ai file aumenta il numero in `sw.js` (`rider-evento-v9` → `v10`), così chi l'ha installata riceve la versione nuova alla riapertura successiva.
 
 ## File
 
