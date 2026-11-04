@@ -207,6 +207,14 @@
       if (!empty || v == null || v === "" || found[k]) return;
       d[k] = v; found[k] = 1; labels.push(label);
     }
+    /* Vero se la frase compare e non è negata poco prima ("non serve il centro slide") */
+    function aff(re) {
+      var g = new RegExp(re.source, "g"), m;
+      while ((m = g.exec(low))) {
+        if (!/\bnon\b|\bsenza\b|nessun|\bno\b/.test(low.slice(Math.max(0, m.index - 45), m.index))) return true;
+      }
+      return false;
+    }
     function addMulti(k, v, label) {
       var arr = Array.isArray(d[k]) ? d[k].slice() : [];
       if (arr.indexOf(v) >= 0) return;
@@ -216,6 +224,11 @@
     /* Nome: riga "Oggetto" */
     var og = text.match(/^\s*(?:oggetto|subject)\s*:\s*(.+)$/im);
     if (og) put("nome", og[1].replace(/^((re|r|fwd?|i|inoltro)\s*:\s*)+/i, "").trim().slice(0, 80), "Nome evento");
+
+    if (!found.nome) {
+      var nm = text.match(/[«"“]([^»"”\n]{4,80})[»"”]/) || text.match(/\b(?:convegno|congresso|convention|seminario|workshop|corso|evento|giornata|conferenza)\s+((?:[A-ZÀ-Ù0-9'’]{2,}\s+){1,7}[A-ZÀ-Ù0-9'’]{2,})/);
+      if (nm) put("nome", nm[1].trim(), "Nome evento");
+    }
 
     /* Data */
     var dataTxt = low, iso = "";
@@ -234,19 +247,34 @@
     }
     if (iso && !isNaN(new Date(iso))) put("data", iso, "Data");
 
-    /* Orari, frase per frase */
-    dataTxt.split(/\n|;|,|\. (?=[a-z])/).forEach(function (cl) {
-      var times = [], re = /\b(?:(?:ore|alle|dalle|dal|al|h|entro le|verso le|per le)\s*(\d{1,2})(?:[:.h](\d{2}))?|(\d{1,2})[:h.](\d{2}))(?!\d)/g, t;
-      while ((t = re.exec(cl))) {
-        var hh = +(t[1] || t[3]), mi = +(t[2] || t[4] || 0);
-        if (hh <= 23 && mi <= 59) times.push(pad2(hh) + ":" + pad2(mi));
+    /* Orari: ogni orario prende il significato dalle parole che lo precedono (a partire dalle, fino a, entro...) */
+    dataTxt.split(/\n|;|\. (?=[A-Za-zÀ-ù])/).forEach(function (cl) {
+      var items = [], re = /\b(?:(?:ore|alle|dalle|dal|al|h|entro le|verso le|per le)\s*(\d{1,2})(?:[:.h](\d{2}))?|(\d{1,2})[:h.](\d{2}))(?!\d)/g, tm, prevEnd = 0;
+      while ((tm = re.exec(cl))) {
+        var hh = +(tm[1] || tm[3]), mi = +(tm[2] || tm[4] || 0);
+        if (hh > 23 || mi > 59) continue;
+        var from = Math.max(prevEnd, tm.index - 45), win = cl.slice(from, tm.index), kind = "";
+        if (/smontagg|disallest|ritiro/.test(win)) kind = "s";
+        else if (/montagg|allestim|set-?up|\bprove\b|\bcarico\b/.test(win)) kind = "m";
+        else {
+          var pos = { i: -1, f: -1 };
+          var ri = /a partire d|dalle|\bdal\b|inizio|apertura|\bstart\b|accredit/g, rf = /fino a|entro|termin|\bfine\b|chiusur|conclus|circa/g, x;
+          while ((x = ri.exec(win))) pos.i = x.index;
+          while ((x = rf.exec(win))) pos.f = x.index;
+          kind = pos.i < 0 && pos.f < 0 ? "" : pos.i > pos.f ? "i" : "f";
+        }
+        var prev = items[items.length - 1];
+        if (!kind && prev && prev.kind === "i" && /^\s*(?:-|–|—|alle|a)?\s*(?:ore)?\s*$/.test(cl.slice(prevEnd, tm.index))) kind = "f";
+        items.push({ t: pad2(hh) + ":" + pad2(mi), kind: kind });
+        prevEnd = tm.index + tm[0].length;
       }
-      if (!times.length) return;
-      if (/smontagg|disallest|ritiro/.test(cl)) put("t_smont", times[times.length - 1], "Fine smontaggio");
-      else if (/montagg|allestim|carico|set-?up|prove|arrivo/.test(cl)) put("t_mont", times[0], "Inizio montaggio");
-      else if (times.length >= 2) { put("t_inizio", times[0], "Inizio evento"); put("t_fine", times[1], "Fine evento"); }
-      else if (/fine|termin|chiusur|conclu/.test(cl)) put("t_fine", times[0], "Fine evento");
-      else put("t_inizio", times[0], "Inizio evento");
+      if (items.length >= 2 && !items[0].kind && items[1].kind === "f") items[0].kind = "i";
+      items.forEach(function (it) {
+        if (it.kind === "m") put("t_mont", it.t, "Inizio montaggio");
+        else if (it.kind === "s") put("t_smont", it.t, "Fine smontaggio");
+        else if (it.kind === "i") put("t_inizio", it.t, "Inizio evento");
+        else if (it.kind === "f") put("t_fine", it.t, "Fine evento");
+      });
     });
 
     /* Partecipanti, telefono */
@@ -256,7 +284,7 @@
     if (tel) put("tel", tel[0].trim(), "Telefono");
 
     /* Luoghi e persone */
-    var lo = text.match(/(?:location|luogo|sede)\s*:\s*([^\n]{3,70})/i) || text.match(/\b(?:presso|all['’]interno de[li]l?['’]?|c\/o)\s+((?:[A-ZÀ-Ù0-9][\wà-ù'’.&-]*\s?){1,6})/);
+    var lo = text.match(/(?:location|luogo|sede)\s*:\s*([^\n]{3,70})/i) || text.match(/\b((?:Fondazione|Hotel|Palazzo|Teatro|Centro Congressi|Palacongressi|Università|Villa|Museo|Castello|Policlinico|Ospedale|Camera di Commercio)(?:\s+(?:[A-ZÀ-Ù][\wà-ù'’&-]*|di|del|della|dei|degli|de)){1,4})/) || text.match(/\b(?:presso|c\/o)\s+(?:(?:l['’]|il |la |lo |gli |le |i )\s*)?((?:[A-ZÀ-Ù0-9][\wà-ù'’&-]*\s?){1,6})/);
     if (lo) put("location", lo[1].replace(/[\s,.;]+$/, "").trim(), "Location");
     var sa = text.match(/\b(aula magna|auditorium|sala\s+[A-ZÀ-Ù][\wà-ù]+(?:\s+[A-ZÀ-Ù][\wà-ù]+)?|sala\s+\d+|aula\s+[A-Z0-9][\w]*)/i);
     if (sa) put("sala", /^aula magna$/i.test(sa[1]) ? "Aula Magna" : sa[1].replace(/\s+/g, " ").replace(/^./, function (c) { return c.toUpperCase(); }), "Sala");
@@ -267,7 +295,7 @@
 
     /* Tipo di evento */
     var sc = { medico: 0, universitario: 0, aziendale: 0 };
-    (low.match(/medic|congresso|\becm\b|sanit|clinic|ospedal|farmac|chirurg/g) || []).forEach(function () { sc.medico++; });
+    (low.match(/medic|congresso|\becm\b|sanit|clinic|ospedal|farmac|chirurg|parkinson|patolog|neurolog|cardiolog|oncolog|diabete|\bmalatt/g) || []).forEach(function () { sc.medico++; });
     (low.match(/universit|ateneo|laurea|dipartimento|studenti|seminario|lezione|\baula\b/g) || []).forEach(function () { sc.universitario++; });
     (low.match(/aziend|convention|kick-?off|cena di gala|presentazione prodotto|team building|assemblea|dipendenti/g) || []).forEach(function () { sc.aziendale++; });
     var best = Object.keys(sc).sort(function (a, b) { return sc[b] - sc[a]; });
@@ -291,14 +319,14 @@
     }
 
     /* Sorgenti video */
-    [["Slide (PowerPoint, Keynote)", /powerpoint|\bslide\b|keynote|presentazion/], ["Video", /\bvideo\b|filmat|\bclip\b/],
+    [["Slide (PowerPoint, Keynote)", /powerpoint|\bslide\b|keynote|presentazion/], ["Video", /\bvideo\b|videoregistr|filmat|\bclip\b/],
      ["Slido o sondaggi dal vivo", /slido|sondagg|mentimeter|polling/], ["Sito o demo dal vivo", /\bsito\b|demo live|demo dal vivo/],
      ["Grafiche e sottopancia", /grafich|sottopancia|titoli/], ["Timer relatori", /timer|countdown/]
     ].forEach(function (s) { if (s[1].test(low)) addMulti("sorgenti", s[0], "Sorgenti video"); });
 
     /* Collegamenti, schermi, extra */
-    if (/streaming|in diretta|diretta streaming|youtube|live stream/.test(low)) put("collegamento", "Streaming", "Collegamento");
-    else if (/videocall|videochiamata|\bzoom\b|\bteams\b|google meet|da remoto|webinar|collegamento remoto/.test(low)) put("collegamento", "Videocall", "Collegamento");
+    if (/streaming|diretta streaming|youtube|live stream|trasmess\w+ in diretta/.test(low)) put("collegamento", "Streaming", "Collegamento");
+    else if (/videocall|videochiamata|\bzoom\b|\bteams\b|google meet|da remoto|webinar|collegamento remoto|collegamento da remoto|collegarsi|collegato da|collegamento con/.test(low)) put("collegamento", "Videocall", "Collegamento");
     if (d.collegamento === "Streaming" || d.collegamento === "Videocall" || found.collegamento) {
       var pf = /\bzoom\b/.test(low) ? "Zoom" : /\bteams\b/.test(low) ? "Teams" : /google meet|\bmeet\b/.test(low) ? "Meet" : /youtube/.test(low) ? "YouTube" : "";
       if (pf) put("piattaforma", pf, "Piattaforma");
@@ -308,11 +336,11 @@
     if (/tv ai lati|schermi laterali|monitor laterali|schermi ai lati/.test(low) && !ex["TV ai lati del palco"]) { ex["TV ai lati del palco"] = 2; exNew = true; }
     if (/monitor di rimando|confidence monitor|rimando relatori/.test(low) && !ex["Monitor di rimando per i relatori"]) { ex["Monitor di rimando per i relatori"] = 1; exNew = true; }
     if (exNew) { d.schermi_extra = ex; labels.push("Altri schermi"); }
-    if (/traduzione simultanea|interpret|cuffie per la traduzione/.test(low)) put("traduzione", "Sì", "Traduzione");
-    if (/registrazione|registrare|registrato/.test(low)) put("registrazione", "Sì", "Registrazione");
-    if (/musica di sottofondo|sottofondo musical|\bmusica\b/.test(low)) put("musica", "Sì", "Musica");
-    if (/avanzatore|clicker|telecomando per le slide|telecomando slide/.test(low)) put("avanzatore", "Sì", "Avanzatore");
-    if (/centro slide|slide center/.test(low)) put("centro_slide", "Sì", "Centro slide");
+    if (aff(/traduzione simultanea|interpret|cuffie per la traduzione/)) put("traduzione", "Sì", "Traduzione");
+    if (aff(/registrazione|da registrare|registrare l['’]evento|registrare tutto/)) put("registrazione", "Sì", "Registrazione");
+    if (aff(/musica di sottofondo|sottofondo musical|\bmusica\b/)) put("musica", "Sì", "Musica");
+    if (aff(/avanzatore|clicker|telecomando per le slide|telecomando slide/)) put("avanzatore", "Sì", "Avanzatore");
+    if (aff(/centro slide|slide center/)) put("centro_slide", "Sì", "Centro slide");
     var pal = low.match(/\bpalco\b[^\n]{0,30}?(\d+(?:[.,]\d+)?)\s*[x×]\s*(\d+(?:[.,]\d+)?)/);
     if (pal) { put("palcoluci", "Sì", "Palco e luci"); put("palco", pal[1] + " x " + pal[2] + " m", "Dimensioni palco"); }
     else if (/\bpalco\b/.test(low)) put("palcoluci", "Sì", "Palco e luci");
