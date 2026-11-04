@@ -196,8 +196,154 @@
       Object.keys(TIPI).map(function (k) { return '<button type="button" data-tipo="' + k + '" aria-pressed="' + (d.tipo === k) + '"><b>' + TIPI[k].nome + "</b><small>" + TIPI[k].desc + "</small></button>"; }).join("") + "</div></div>";
   }
   /* ---------- Compila ---------- */
+  /* ---------- Importa da email o testo: riconoscimento con regole, tutto sul dispositivo ---------- */
+  var MESI = { gennaio: 1, febbraio: 2, marzo: 3, aprile: 4, maggio: 5, giugno: 6, luglio: 7, agosto: 8, settembre: 9, ottobre: 10, novembre: 11, dicembre: 12 };
+  var NUMERI = { un: 1, uno: 1, una: 1, due: 2, tre: 3, quattro: 4, cinque: 5, sei: 6, sette: 7, otto: 8, nove: 9, dieci: 10 };
+  var NUMRE = "\\d{1,2}|un|uno|una|due|tre|quattro|cinque|sei|sette|otto|nove|dieci";
+  var MICS = [
+    ["Palmare", "palmar\\w*|gelat\\w*|a mano"],
+    ["Archetto", "archett\\w*|headset|madonna"],
+    ["Lavalier", "lavalier\\w*|cravatta|spilla|petto"],
+    ["Tavolo / leggio", "tavolo|leggio|collo d'oca|gooseneck"]
+  ];
+  function numVal(s) { return /^\d/.test(s) ? +s : (NUMERI[s] || 0); }
+  function pad2(n) { return (n < 10 ? "0" : "") + n; }
+  function cap(s) { return s.replace(/\b([a-zà-ù])/g, function (m) { return m.toUpperCase(); }); }
+
+  function importa(raw) {
+    var found = {}, labels = [];
+    var text = String(raw || "").replace(/\r/g, "").replace(/[ \t]+/g, " ");
+    var low = text.toLowerCase();
+    function put(k, v, label) {
+      var cur = d[k];
+      var empty = cur == null || cur === "" || (Array.isArray(cur) && !cur.length) || (typeof cur === "object" && !Array.isArray(cur) && !Object.keys(cur).some(function (o) { return cur[o]; }));
+      if (!empty || v == null || v === "" || found[k]) return;
+      d[k] = v; found[k] = 1; labels.push(label);
+    }
+    function addMulti(k, v, label) {
+      var arr = Array.isArray(d[k]) ? d[k].slice() : [];
+      if (arr.indexOf(v) >= 0) return;
+      arr.push(v); d[k] = arr; labels.push(label);
+    }
+
+    /* Nome: riga "Oggetto" */
+    var og = text.match(/^\s*(?:oggetto|subject)\s*:\s*(.+)$/im);
+    if (og) put("nome", og[1].replace(/^((re|r|fwd?|i|inoltro)\s*:\s*)+/i, "").trim().slice(0, 80), "Nome evento");
+
+    /* Data */
+    var dataTxt = low, iso = "";
+    var m1 = low.match(/\b(\d{1,2})[\/.\-](\d{1,2})[\/.\-](\d{4}|\d{2})\b/);
+    var m2 = low.match(/\b(\d{1,2})(?:°|º)?\s+(gennaio|febbraio|marzo|aprile|maggio|giugno|luglio|agosto|settembre|ottobre|novembre|dicembre)(?:\s+(\d{4}))?\b/);
+    var y = new Date().getFullYear();
+    if (m1) {
+      var yy = +m1[3]; if (yy < 100) yy += 2000;
+      iso = yy + "-" + pad2(+m1[2]) + "-" + pad2(+m1[1]);
+      dataTxt = dataTxt.replace(m1[0], " ");
+    } else if (m2) {
+      var mm = MESI[m2[2]], dd = +m2[1], yr = m2[3] ? +m2[3] : y;
+      if (!m2[3] && new Date(yr, mm - 1, dd) < new Date(new Date().setHours(0, 0, 0, 0))) yr++;
+      iso = yr + "-" + pad2(mm) + "-" + pad2(dd);
+      dataTxt = dataTxt.replace(m2[0], " ");
+    }
+    if (iso && !isNaN(new Date(iso))) put("data", iso, "Data");
+
+    /* Orari, frase per frase */
+    dataTxt.split(/\n|;|,|\. (?=[a-z])/).forEach(function (cl) {
+      var times = [], re = /\b(?:(?:ore|alle|dalle|dal|al|h|entro le|verso le|per le)\s*(\d{1,2})(?:[:.h](\d{2}))?|(\d{1,2})[:h.](\d{2}))(?!\d)/g, t;
+      while ((t = re.exec(cl))) {
+        var hh = +(t[1] || t[3]), mi = +(t[2] || t[4] || 0);
+        if (hh <= 23 && mi <= 59) times.push(pad2(hh) + ":" + pad2(mi));
+      }
+      if (!times.length) return;
+      if (/smontagg|disallest|ritiro/.test(cl)) put("t_smont", times[times.length - 1], "Fine smontaggio");
+      else if (/montagg|allestim|carico|set-?up|prove|arrivo/.test(cl)) put("t_mont", times[0], "Inizio montaggio");
+      else if (times.length >= 2) { put("t_inizio", times[0], "Inizio evento"); put("t_fine", times[1], "Fine evento"); }
+      else if (/fine|termin|chiusur|conclu/.test(cl)) put("t_fine", times[0], "Fine evento");
+      else put("t_inizio", times[0], "Inizio evento");
+    });
+
+    /* Partecipanti, telefono */
+    var px = low.match(/(\d{2,4})\s*(?:persone|partecipanti|ospiti|pax|invitati|iscritti|studenti)/);
+    if (px) put("pax", px[1], "Partecipanti");
+    var tel = text.match(/(?:\+39[\s.]?)?\b3\d{2}[\s.\-]?\d{3}[\s.\-]?\d{3,4}\b/);
+    if (tel) put("tel", tel[0].trim(), "Telefono");
+
+    /* Luoghi e persone */
+    var lo = text.match(/(?:location|luogo|sede)\s*:\s*([^\n]{3,70})/i) || text.match(/\b(?:presso|all['’]interno de[li]l?['’]?|c\/o)\s+((?:[A-ZÀ-Ù0-9][\wà-ù'’.&-]*\s?){1,6})/);
+    if (lo) put("location", lo[1].replace(/[\s,.;]+$/, "").trim(), "Location");
+    var sa = text.match(/\b(aula magna|auditorium|sala\s+[A-ZÀ-Ù][\wà-ù]+(?:\s+[A-ZÀ-Ù][\wà-ù]+)?|sala\s+\d+|aula\s+[A-Z0-9][\w]*)/i);
+    if (sa) put("sala", /^aula magna$/i.test(sa[1]) ? "Aula Magna" : sa[1].replace(/\s+/g, " ").replace(/^./, function (c) { return c.toUpperCase(); }), "Sala");
+    var rf = text.match(/(?:[Rr]eferente|[Cc]ontatto|[Pp]er informazioni|[Rr]esponsabile)\s*:?\s+([A-ZÀ-Ù][\wà-ù'’]+(?:\s+[A-ZÀ-Ù][\wà-ù'’]+){0,2})/);
+    if (rf) put("ref", rf[1], "Referente");
+    var ag = text.match(/\b[Aa]genzia\s*:?\s+([A-ZÀ-Ù][\wà-ù'’&-]*(?:\s+[A-ZÀ-Ù][\wà-ù'’&-]*){0,3})/);
+    if (ag) put("agenzia", ag[1], "Agenzia");
+
+    /* Tipo di evento */
+    var sc = { medico: 0, universitario: 0, aziendale: 0 };
+    (low.match(/medic|congresso|\becm\b|sanit|clinic|ospedal|farmac|chirurg/g) || []).forEach(function () { sc.medico++; });
+    (low.match(/universit|ateneo|laurea|dipartimento|studenti|seminario|lezione|\baula\b/g) || []).forEach(function () { sc.universitario++; });
+    (low.match(/aziend|convention|kick-?off|cena di gala|presentazione prodotto|team building|assemblea|dipendenti/g) || []).forEach(function () { sc.aziendale++; });
+    var best = Object.keys(sc).sort(function (a, b) { return sc[b] - sc[a]; });
+    if (sc[best[0]] > 0 && sc[best[0]] > sc[best[1]] && !d.tipo) { d.tipo = best[0]; labels.push("Tipo di evento"); }
+
+    /* Microfoni, anche con i nomi in uso (gelato = palmare) */
+    var mic = d.mic && typeof d.mic === "object" && !Array.isArray(d.mic) ? d.mic : {}, micNew = false;
+    MICS.forEach(function (mt) {
+      if (mic[mt[0]]) return;
+      var a = new RegExp("\\b(" + NUMRE + ")\\s*(?:x\\s*)?(?:radio)?(?:microfon\\w*\\s*|mic\\s*)?(?:wireless\\s+|senza fili\\s+)?(?:a\\s+|ad\\s+|da\\s+)?(?:" + mt[1] + ")", "g");
+      var b = new RegExp("(?:" + mt[1] + ")[^\\d\\n]{0,14}?[:(x ]\\s*(\\d{1,2})\\b", "g");
+      var n = 0, r;
+      while ((r = a.exec(low))) n = Math.max(n, numVal(r[1]));
+      while ((r = b.exec(low))) n = Math.max(n, +r[1]);
+      if (n > 0 && n < 50) { mic[mt[0]] = n; micNew = true; }
+    });
+    if (micNew) { d.mic = mic; labels.push("Microfoni"); }
+    else {
+      var gen = low.match(new RegExp("\\b(" + NUMRE + ")\\s*(?:radio)?microfon"));
+      if (gen && !Object.keys(mic).some(function (o) { return mic[o]; })) labels.push("Microfoni (" + numVal(gen[1]) + " citati: scegli il tipo)");
+    }
+
+    /* Sorgenti video */
+    [["Slide (PowerPoint, Keynote)", /powerpoint|\bslide\b|keynote|presentazion/], ["Video", /\bvideo\b|filmat|\bclip\b/],
+     ["Slido o sondaggi dal vivo", /slido|sondagg|mentimeter|polling/], ["Sito o demo dal vivo", /\bsito\b|demo live|demo dal vivo/],
+     ["Grafiche e sottopancia", /grafich|sottopancia|titoli/], ["Timer relatori", /timer|countdown/]
+    ].forEach(function (s) { if (s[1].test(low)) addMulti("sorgenti", s[0], "Sorgenti video"); });
+
+    /* Collegamenti, schermi, extra */
+    if (/streaming|in diretta|diretta streaming|youtube|live stream/.test(low)) put("collegamento", "Streaming", "Collegamento");
+    else if (/videocall|videochiamata|\bzoom\b|\bteams\b|google meet|da remoto|webinar|collegamento remoto/.test(low)) put("collegamento", "Videocall", "Collegamento");
+    if (d.collegamento === "Streaming" || d.collegamento === "Videocall" || found.collegamento) {
+      var pf = /\bzoom\b/.test(low) ? "Zoom" : /\bteams\b/.test(low) ? "Teams" : /google meet|\bmeet\b/.test(low) ? "Meet" : /youtube/.test(low) ? "YouTube" : "";
+      if (pf) put("piattaforma", pf, "Piattaforma");
+    }
+    var ex = d.schermi_extra && typeof d.schermi_extra === "object" && !Array.isArray(d.schermi_extra) ? d.schermi_extra : {}, exNew = false;
+    if (/gobbo|teleprompter/.test(low) && !ex["Gobbo"]) { ex["Gobbo"] = 1; exNew = true; }
+    if (/tv ai lati|schermi laterali|monitor laterali|schermi ai lati/.test(low) && !ex["TV ai lati del palco"]) { ex["TV ai lati del palco"] = 2; exNew = true; }
+    if (/monitor di rimando|confidence monitor|rimando relatori/.test(low) && !ex["Monitor di rimando per i relatori"]) { ex["Monitor di rimando per i relatori"] = 1; exNew = true; }
+    if (exNew) { d.schermi_extra = ex; labels.push("Altri schermi"); }
+    if (/traduzione simultanea|interpret|cuffie per la traduzione/.test(low)) put("traduzione", "Sì", "Traduzione");
+    if (/registrazione|registrare|registrato/.test(low)) put("registrazione", "Sì", "Registrazione");
+    if (/musica di sottofondo|sottofondo musical|\bmusica\b/.test(low)) put("musica", "Sì", "Musica");
+    if (/avanzatore|clicker|telecomando per le slide|telecomando slide/.test(low)) put("avanzatore", "Sì", "Avanzatore");
+    if (/centro slide|slide center/.test(low)) put("centro_slide", "Sì", "Centro slide");
+    var pal = low.match(/\bpalco\b[^\n]{0,30}?(\d+(?:[.,]\d+)?)\s*[x×]\s*(\d+(?:[.,]\d+)?)/);
+    if (pal) { put("palcoluci", "Sì", "Palco e luci"); put("palco", pal[1] + " x " + pal[2] + " m", "Dimensioni palco"); }
+    else if (/\bpalco\b/.test(low)) put("palcoluci", "Sì", "Palco e luci");
+
+    /* Attrezzatura già in sala */
+    var si = [["Mixer audio", /(mixer|regia audio)[^\n.]{0,20}(della sala|present|in sala|esistent)/], ["Impianto di diffusione (casse)", /(impianto|casse|audio)[^\n.]{0,20}(della sala|presente|in sala|esistente)/],
+      ["Microfoni", /microfoni[^\n.]{0,20}(della sala|present|in sala|esistent)/], ["Proiettore e telo", /(proiettore|videoproiettore)[^\n.]{0,20}(della sala|present|in sala|esistent)/]];
+    var any = false;
+    si.forEach(function (s) { if (s[1].test(low)) { addMulti("insala", s[0], "Già in sala: " + s[0]); any = true; } });
+    if (any) d.insala_sn = "Sì";
+    if (!d.amplificazione && /amplificazione|impianto audio|diffusione|\bcasse\b/.test(low) && !(any && /^Impianto/.test((d.insala || []).join("|")))) put("amplificazione", "Sì", "Amplificazione");
+
+    return labels.filter(function (x, i) { return labels.indexOf(x) === i; });
+  }
+
   function tabAvanzata() {
-    var h = '<div class="card"><h2>Tipo di evento</h2><div class="grid">' + tipoHTML("") .replace('<span class="l"></span>', "") + "</div></div>";
+    var h = '<div class="card"><h2>Hai una email o un testo?</h2><p class="hint">Incollalo qui: compilo quello che riconosco, senza toccare ciò che hai già scritto. Il testo resta sul dispositivo e non viene salvato.</p><textarea id="importText" placeholder="Incolla qui email, richiesta o appunti" aria-label="Email o testo da leggere"></textarea><button class="btn alt" type="button" data-act="import">Compila dal testo</button></div>';
+    h += '<div class="card"><h2>Tipo di evento</h2><div class="grid">' + tipoHTML("") .replace('<span class="l"></span>', "") + "</div></div>";
     EVENT_GROUPS.forEach(function (g) {
       h += '<div class="card"><h2>' + g.title + '</h2><div class="grid">' + g.fields.map(fieldHTML).join("") + "</div></div>";
     });
@@ -415,6 +561,14 @@
       var out = el.parentNode.querySelector("output");
       if (out) out.textContent = obj[s.o];
       return;
+    }
+    if (s.act === "import") {
+      var box = $("#importText"), src = box ? box.value : "";
+      if (!src.trim()) return showNotice("Incolla prima un testo.", false);
+      var snap = JSON.parse(JSON.stringify(d)), got = importa(src);
+      if (!got.length) { d = snap; return showNotice("Non ho trovato informazioni da inserire. Prova con più dettagli o compila a mano.", false); }
+      prevD = snap; save(); render();
+      return showNotice("Compilati: " + got.join(", ") + ". Controlla e correggi.", true);
     }
     if (s.act === "reset") {
       if (!resetArmed) {
