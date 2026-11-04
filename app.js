@@ -226,12 +226,12 @@
     if (og) put("nome", og[1].replace(/^((re|r|fwd?|i|inoltro)\s*:\s*)+/i, "").trim().slice(0, 80), "Nome evento");
 
     if (!found.nome) {
-      var nm = text.match(/[«"“]([^»"”\n]{4,80})[»"”]/) || text.match(/\b(?:convegno|congresso|convention|seminario|workshop|corso|evento|giornata|conferenza)\s+((?:[A-ZÀ-Ù0-9'’]{2,}\s+){1,7}[A-ZÀ-Ù0-9'’]{2,})/);
+      var nm = text.match(/\b(?:convegno|congresso|convention|seminario|workshop|corso|evento|giornata|conferenza|titolo)\s*(?:dal titolo|intitolat\w+|:)?\s*[«"“]([^»"”\n]{4,80})[»"”]/i) || text.match(/\b(?:convegno|congresso|convention|seminario|workshop|corso|evento|giornata|conferenza)\s+((?:[A-ZÀ-Ù0-9'’]{2,}\s+){1,7}[A-ZÀ-Ù0-9'’]{2,})/);
       if (nm) put("nome", nm[1].trim(), "Nome evento");
     }
 
     /* Data */
-    var dataTxt = low, iso = "";
+    var dataTxt = low, iso = "", dateWarn = false;
     var m1 = low.match(/\b(\d{1,2})[\/.\-](\d{1,2})[\/.\-](\d{4}|\d{2})\b/);
     var m2 = low.match(/\b(\d{1,2})(?:°|º)?\s+(gennaio|febbraio|marzo|aprile|maggio|giugno|luglio|agosto|settembre|ottobre|novembre|dicembre)(?:\s+(\d{4}))?\b/);
     var y = new Date().getFullYear();
@@ -242,10 +242,18 @@
     } else if (m2) {
       var mm = MESI[m2[2]], dd = +m2[1], yr = m2[3] ? +m2[3] : y;
       if (!m2[3] && new Date(yr, mm - 1, dd) < new Date(new Date().setHours(0, 0, 0, 0))) yr++;
+      var wd = low.slice(Math.max(0, m2.index - 14), m2.index).match(/(domenica|luned[ìi]|marted[ìi]|mercoled[ìi]|gioved[ìi]|venerd[ìi]|sabato)/);
+      if (wd && !m2[3]) {
+        var WD = { domenica: 0, "lunedì": 1, "lunedi": 1, "martedì": 2, "martedi": 2, "mercoledì": 3, "mercoledi": 3, "giovedì": 4, "giovedi": 4, "venerdì": 5, "venerdi": 5, sabato: 6 };
+        var now0 = new Date(new Date().setHours(0, 0, 0, 0));
+        var hit = false;
+        for (var yy2 = y; yy2 <= y + 1; yy2++) { var cd = new Date(yy2, mm - 1, dd); if (cd >= now0 && cd.getDay() === WD[wd[1]]) { yr = yy2; hit = true; break; } }
+        if (!hit) dateWarn = true;
+      }
       iso = yr + "-" + pad2(mm) + "-" + pad2(dd);
       dataTxt = dataTxt.replace(m2[0], " ");
     }
-    if (iso && !isNaN(new Date(iso))) put("data", iso, "Data");
+    if (iso && !isNaN(new Date(iso))) put("data", iso, dateWarn ? "Data (il giorno della settimana non torna con l'anno: controllala)" : "Data");
 
     /* Orari: ogni orario prende il significato dalle parole che lo precedono (a partire dalle, fino a, entro...) */
     dataTxt.split(/\n|;|\. (?=[A-Za-zÀ-ù])/).forEach(function (cl) {
@@ -286,7 +294,7 @@
     /* Luoghi e persone */
     var lo = text.match(/(?:location|luogo|sede)\s*:\s*([^\n]{3,70})/i) || text.match(/\b((?:Fondazione|Hotel|Palazzo|Teatro|Centro Congressi|Palacongressi|Università|Villa|Museo|Castello|Policlinico|Ospedale|Camera di Commercio)(?:\s+(?:[A-ZÀ-Ù][\wà-ù'’&-]*|di|del|della|dei|degli|de)){1,4})/) || text.match(/\b(?:presso|c\/o)\s+(?:(?:l['’]|il |la |lo |gli |le |i )\s*)?((?:[A-ZÀ-Ù0-9][\wà-ù'’&-]*\s?){1,6})/);
     if (lo) put("location", lo[1].replace(/[\s,.;]+$/, "").trim(), "Location");
-    var sa = text.match(/\b(aula magna|auditorium|sala\s+[A-ZÀ-Ù][\wà-ù]+(?:\s+[A-ZÀ-Ù][\wà-ù]+)?|sala\s+\d+|aula\s+[A-Z0-9][\w]*)/i);
+    var sa = text.match(/\b(aula magna|auditorium|sala\s+[A-ZÀ-Ù][\wà-ù]+(?:\s+[A-ZÀ-Ù][\wà-ù]+)?|sala[ ]\d{1,2}\b(?![ ]*(?:radio|microfon|pers|cass|schermi|tv|proiett))|aula\s+[A-Z0-9][\w]*)/i);
     if (sa) put("sala", /^aula magna$/i.test(sa[1]) ? "Aula Magna" : sa[1].replace(/\s+/g, " ").replace(/^./, function (c) { return c.toUpperCase(); }), "Sala");
     var rf = text.match(/(?:[Rr]eferente|[Cc]ontatto|[Pp]er informazioni|[Rr]esponsabile)\s*:?\s+([A-ZÀ-Ù][\wà-ù'’]+(?:\s+[A-ZÀ-Ù][\wà-ù'’]+){0,2})/);
     if (rf) put("ref", rf[1], "Referente");
@@ -312,6 +320,12 @@
       while ((r = b.exec(low))) n = Math.max(n, +r[1]);
       if (n > 0 && n < 50) { mic[mt[0]] = n; micNew = true; }
     });
+    var rm = new RegExp("\\b(" + NUMRE + ")\\s*radiomicrofon\\w*", "g"), rr, rn = 0;
+    while ((rr = rm.exec(low))) rn += numVal(rr[1]);
+    if (rn > 0 && rn < 50 && !mic["Palmare / gelato radio"]) { mic["Palmare / gelato radio"] = rn; micNew = true; }
+    var tm2 = new RegExp("(?:tavolo|podio|leggio)[^\\n]{0,40}?\\bcon\\s+(" + NUMRE + ")\\s+microfon", "g"), tr, tn = 0;
+    while ((tr = tm2.exec(low))) tn += numVal(tr[1]);
+    if (tn > 0 && tn < 50 && !mic["Da tavolo a filo"]) { mic["Da tavolo a filo"] = tn; micNew = true; }
     if (micNew) { d.mic = mic; labels.push("Microfoni"); }
     else {
       var gen = low.match(new RegExp("\\b(" + NUMRE + ")\\s*(?:radio)?microfon"));
@@ -335,6 +349,8 @@
     if (/gobbo|teleprompter/.test(low) && !ex["Gobbo"]) { ex["Gobbo"] = 1; exNew = true; }
     if (/tv ai lati|schermi laterali|monitor laterali|schermi ai lati/.test(low) && !ex["TV ai lati del palco"]) { ex["TV ai lati del palco"] = 2; exNew = true; }
     if (/monitor di rimando|confidence monitor|rimando relatori/.test(low) && !ex["Monitor di rimando per i relatori"]) { ex["Monitor di rimando per i relatori"] = 1; exNew = true; }
+    if (/tavolo moderatori[^\n]{0,60}monitor/.test(low) && !ex["Monitor di rimando per i moderatori"]) { ex["Monitor di rimando per i moderatori"] = 1; exNew = true; }
+    if (/podio[^\n]{0,60}monitor/.test(low) && !ex["Monitor di rimando per i relatori"]) { ex["Monitor di rimando per i relatori"] = 1; exNew = true; }
     if (exNew) { d.schermi_extra = ex; labels.push("Altri schermi"); }
     if (aff(/traduzione simultanea|interpret|cuffie per la traduzione/)) put("traduzione", "Sì", "Traduzione");
     if (aff(/registrazione|da registrare|registrare l['’]evento|registrare tutto/)) put("registrazione", "Sì", "Registrazione");
@@ -344,6 +360,9 @@
     var pal = low.match(/\bpalco\b[^\n]{0,30}?(\d+(?:[.,]\d+)?)\s*[x×]\s*(\d+(?:[.,]\d+)?)/);
     if (pal) { put("palcoluci", "Sì", "Palco e luci"); put("palco", pal[1] + " x " + pal[2] + " m", "Dimensioni palco"); }
     else if (/\bpalco\b/.test(low)) put("palcoluci", "Sì", "Palco e luci");
+
+    var al = low.match(/(?:allestimento|prove tecniche)[^\n.),]{0,60}/);
+    if (al && !d.t_mont && !(d.logistica_note || "").length) { d.logistica_note = "Allestimento: " + al[0].replace(/^(allestimento|prove tecniche)\s*/, "").trim(); labels.push("Note (allestimento)"); }
 
     /* Attrezzatura già in sala */
     var si = [["Mixer audio", /(mixer|regia audio)[^\n.]{0,20}(della sala|present|in sala|esistent)/], ["Impianto di diffusione (casse)", /(impianto|casse|audio)[^\n.]{0,20}(della sala|presente|in sala|esistente)/],
