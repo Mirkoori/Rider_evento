@@ -14,7 +14,7 @@ Dopo la prima apertura con rete l'app si apre anche offline.
 
 ## Cosa fa
 
-- **Compila**: tipo di evento, dati generali, audio, regia e video, streaming e videocall, palco e luci. Le domande cambiano in base alle risposte.
+- **Compila**: tipo di evento, dati generali, attrezzatura già presente in sala (la dotazione si adatta: niente mixer o casse se ci sono già), audio, regia e video, streaming e videocall, palco e luci. Le domande cambiano in base alle risposte.
 - **Scheda**: riepilogo, **dotazione suggerita** per i tecnici (mixer, microfoni, DI, supporti per TV e gobbo, casse e altro, con le quantità calcolate), PDF e testo da copiare.
 - **Ricomincia**: azzera la scheda, con Annulla per i 12 secondi successivi.
 
@@ -24,7 +24,7 @@ Il sito si pubblica con GitHub Pages: in *Settings → Pages* scegli come Source
 
 ## Aggiornare l'app
 
-Dopo ogni modifica ai file aumenta il numero in `sw.js` (`rider-evento-v2` → `v3`), così chi l'ha installata riceve la versione nuova alla riapertura successiva.
+Dopo ogni modifica ai file aumenta il numero in `sw.js` (`rider-evento-v4` → `v5`), così chi l'ha installata riceve la versione nuova alla riapertura successiva.
 
 ## File
 

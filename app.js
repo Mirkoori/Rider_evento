@@ -390,6 +390,7 @@
       var i = arr.indexOf(s.v);
       if (i >= 0) arr.splice(i, 1); else arr.push(s.v);
       d[s.multi] = arr; save();
+      if (s.multi === "insala") return render();
       el.setAttribute("aria-pressed", i < 0);
       return;
     }
