@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Rider Evento</title>
+<meta name="description" content="Scheda tecnica e rider per eventi: descrivi l'evento a parole e ottieni la scheda e la dotazione per i tecnici.">
+<meta name="theme-color" content="#1f4fd8">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/png" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Rider Evento">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div class="app">
+  <header>
+    <div>
+      <h1>Rider Evento</h1>
+      <div class="sub" id="sub">Scheda tecnica</div>
+    </div>
+    <div class="hright"><button class="btn alt small" type="button" id="installBtn" hidden>Installa</button><span class="pill" id="saveState">Bozza</span><button class="btn quiet small" type="button" data-act="reset" id="resetBtn">Ricomincia</button></div>
+  </header>
+  <div class="notice" id="notice" role="status" hidden></div>
+  <div class="notice" id="installHint" hidden></div>
+  <nav class="tabs" role="tablist" aria-label="Passi della scheda" id="tabs"></nav>
+  <main class="panel" id="panel"></main>
+</div>
+<script src="config.js"></script>
+<script src="vendor/jspdf.umd.min.js"></script>
+<script src="shim.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
