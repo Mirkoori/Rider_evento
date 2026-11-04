@@ -26,7 +26,7 @@ jobs:
       - name: Prepara i file del sito
         run: |
           mkdir _site
-          cp -r index.html styles.css app.js shim.js config.js sw.js manifest.webmanifest icons fonts vendor _site/
+          cp -r index.html styles.css app.js shim.js sw.js manifest.webmanifest icons fonts vendor _site/
           touch _site/.nojekyll
       - uses: actions/upload-pages-artifact@v3
         with:

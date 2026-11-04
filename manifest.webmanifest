@@ -1,7 +1,7 @@
 {
   "name": "Rider Evento",
   "short_name": "Rider Evento",
-  "description": "Scheda tecnica e rider per eventi: descrivi l'evento a parole e ottieni la scheda e la dotazione per i tecnici.",
+  "description": "Scheda tecnica e rider per eventi, con la dotazione suggerita per i tecnici e il PDF da condividere.",
   "lang": "it",
   "start_url": "./",
   "scope": "./",

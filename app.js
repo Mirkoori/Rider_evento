@@ -5,7 +5,7 @@
     medico: { nome: "Medico", desc: "Congressi, corsi, sale parallele" },
     universitario: { nome: "Universitario", desc: "Aule, seminari, lauree" }
   };
-  var TABS = [["rapida", "Descrivi"], ["avanzata", "Avanzata"], ["scheda", "Scheda"]];
+  var TABS = [["avanzata", "Compila"], ["scheda", "Scheda"]];
 
   var EVENT_GROUPS = [
     { title: "Evento", fields: [
@@ -73,24 +73,15 @@
   ];
 
   /* Domande da fare per prime se mancano, in ordine di importanza (massimo 4 per volta). */
-  var QPRIO = ["tipo", "data", "location", "sorgenti", "transizioni", "mic", "amplificazione", "persone_audio", "regia", "collegamento", "camera", "schermo", "schermi_extra", "centro_slide", "musica", "t_inizio", "pax"];
-
   function blank() {
     return { tipo: "", nome: "", agenzia: "", data: "", pax: "", location: "", sala: "", ref: "", tel: "",
-      t_mont: "", t_inizio: "", t_fine: "", t_smont: "", qtext: "", analizzato: false, dedotti: [], qlist: [], nonCapiti: [] };
+      t_mont: "", t_inizio: "", t_fine: "", t_smont: "" };
   }
 
-  var d, tab = "rapida", toastTimer = null, resetTimer = null, resetArmed = false;
+  var d, tab = "avanzata", toastTimer = null, resetTimer = null, resetArmed = false;
   try { var raw = localStorage.getItem(KEY); if (raw) d = JSON.parse(raw); } catch (e) {}
   if (!d || typeof d !== "object") d = blank();
-  if (!Array.isArray(d.dedotti)) d.dedotti = [];
-  if (!Array.isArray(d.qlist)) d.qlist = [];
-  if (!Array.isArray(d.nonCapiti)) d.nonCapiti = [];
-
-  /* Il dizionario personale resta salvato a parte: Ricomincia non lo cancella. */
-  var GKEY = "rider-evento-dizionario-v1", gloss = "", runId = 0, prevD = null, prevFiles = null, noticeTimer = null;
-  try { gloss = localStorage.getItem(GKEY) || ""; } catch (e) {}
-  function saveGloss() { try { localStorage.setItem(GKEY, gloss); } catch (e) {} }
+  var prevD = null, noticeTimer = null;
 
   var $ = function (s) { return document.querySelector(s); };
   function esc(s) { return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]; }); }
@@ -182,13 +173,7 @@
     return '<div class="f wide"><span class="l">' + esc(label) + '</span><div class="tipo">' +
       Object.keys(TIPI).map(function (k) { return '<button type="button" data-tipo="' + k + '" aria-pressed="' + (d.tipo === k) + '"><b>' + TIPI[k].nome + "</b><small>" + TIPI[k].desc + "</small></button>"; }).join("") + "</div></div>";
   }
-  function widget(k) {
-    if (k === "tipo") return tipoHTML("Che tipo di evento è?");
-    var f = fieldByKey(k);
-    return f && visible(f) ? cell(f) : "";
-  }
-
-  /* ---------- Avanzata ---------- */
+  /* ---------- Compila ---------- */
   function tabAvanzata() {
     var h = '<div class="card"><h2>Tipo di evento</h2><div class="grid">' + tipoHTML("") .replace('<span class="l"></span>', "") + "</div></div>";
     EVENT_GROUPS.forEach(function (g) {
@@ -199,8 +184,6 @@
       if (!fs.length) return;
       h += '<div class="card"><h2>' + s.title + '</h2><div class="grid">' + fs.map(cell).join("") + "</div></div>";
     });
-    h += '<div class="card"><h2>Dizionario</h2><p class="hint">Le parole che usi tu o le agenzie, una per riga, nella forma "termine = significato". Ne conosco già molte. Resta salvato anche dopo Ricomincia.</p>' +
-      '<label class="f" for="f_gloss"><span class="l">Le mie parole</span><textarea id="f_gloss" data-gloss="1" placeholder="gelato = microfono palmare">' + esc(gloss) + "</textarea></label></div>";
     return h + '<button class="btn" type="button" data-tab="scheda">Vedi la scheda</button>';
   }
 
@@ -342,231 +325,11 @@
     return h;
   }
 
-  /* ---------- Descrivi: Claude legge il testo e compila la scheda ---------- */
-  var qfiles = [], sampleFn = null, imgOK = false, busy = false, qstatus = "", qerr = false;
-  var EXAMPLE = "Il 20 novembre congresso di cardiologia al Centro Congressi di Modena, sala plenaria, circa 180 persone. 6 relatori al tavolo, il moderatore ha il gelato e ci servono 2 microfoni volanti per le domande dal pubblico. Regia in fondo alla sala. I relatori portano le slide PowerPoint su chiavetta, c'è un video di apertura e usiamo Slido per le domande. Ci serve il centro slide. Collegamento con la sede di Milano: loro ci vedono e basta. Musica di sottofondo all'ingresso. Si parte alle 9, si finisce alle 17:30.";
-
-  function missingKeys() {
-    var out = [];
-    QPRIO.forEach(function (k) {
-      if (out.length >= 4 || d.dedotti.indexOf(k) >= 0) return;
-      if (k === "tipo") { if (!d.tipo) out.push(k); return; }
-      var f = fieldByKey(k);
-      if (f && visible(f) && isEmpty(d[k]) && !(f.skipIf && f.skipIf(d))) out.push(k);
-    });
-    return out;
-  }
-
-  function tabRapida() {
-    if (d.analizzato) {
-      /* Se una risposta rende rilevante un'altra domanda (es. streaming, poi tipo di ripresa), la aggiungo. */
-      QPRIO.forEach(function (k) {
-        var f = fieldByKey(k);
-        if (f && f.when && visible(f) && isEmpty(d[k]) && !(f.skipIf && f.skipIf(d)) && d.qlist.indexOf(k) < 0 && d.dedotti.indexOf(k) < 0) d.qlist.push(k);
-      });
-    }
-    var h = '<div class="card"><h2>Racconta l\'evento</h2>' +
-      '<p class="hint">Scrivi come lo diresti a voce, oppure incolla la mail ricevuta. Basta anche poco: ti chiedo solo quello che manca.</p>' +
-      '<label class="f" for="f_qtext"><span class="l">Descrizione</span><textarea id="f_qtext" data-k="qtext" style="min-height:170px" placeholder="Es. Il 20 novembre congresso di cardiologia, 180 persone, 6 relatori al tavolo...">' + esc(d.qtext || "") + "</textarea></label>";
-    if (qfiles.length) h += '<div class="files">' + qfiles.map(function (f, i) { return '<span class="fchip">' + esc(f.name) + '<button type="button" data-delq="' + i + '" aria-label="Togli ' + esc(f.name) + '">&times;</button></span>'; }).join("") + "</div>";
-    h += '<input id="qInput" type="file" accept="image/*,.txt,.eml,.csv,.md,text/plain" multiple hidden>' +
-      '<div class="row"><button class="btn" type="button" data-act="analizza"' + (busy ? " disabled" : "") + ">" + (busy ? "Sto leggendo" : "Analizza") + '</button><button class="btn alt" type="button" data-act="addq">Aggiungi foto o file</button></div>' +
-      '<p class="toast' + (qerr ? " err" : "") + '" id="qstatus" role="status">' + esc(qstatus) + "</p>";
-    if (!(d.qtext || "").trim()) h += '<button class="btn quiet" type="button" data-act="esempio">Prova con un esempio</button>';
-    h += "</div>";
-    if (!d.analizzato) return h;
-
-    var flat = [];
-    model().forEach(function (s) { flat = flat.concat(s.rows); });
-    h += '<div class="card doc"><h2>Ho capito questo</h2>' +
-      (flat.length ? '<dl class="dt">' + flat.map(function (r) { return "<dt>" + esc(r[0]) + "</dt><dd>" + esc(r[1]) + "</dd>"; }).join("") + "</dl>" : '<p class="hint">Non ho trovato dati chiari nel testo.</p>') + "</div>";
-    var ded = d.dedotti.map(widget).filter(Boolean);
-    if (ded.length) h += '<div class="card review"><h2>Controlla</h2><p class="hint">Non era scritto chiaro, l\'ho dedotto. Correggi se sbaglio.</p><div class="grid">' + ded.join("") + "</div></div>";
-    if (d.nonCapiti && d.nonCapiti.length) {
-      h += '<div class="card review"><h2>Termini che non conosco</h2><p class="hint">Scrivi cosa significano: li imparo e li ricordo anche per le prossime schede.</p><div class="grid">' +
-        d.nonCapiti.map(function (t, i) { return '<label class="f wide" for="gl_' + i + '"><span class="l">' + esc(t) + '</span><input id="gl_' + i + '" type="text" data-gl="' + esc(t) + '" placeholder="Es. microfono palmare"></label>'; }).join("") +
-        '</div><button class="btn alt" type="button" data-act="insegna">Salva e rianalizza</button></div>';
-    }
-    var q = d.qlist.map(widget).filter(Boolean);
-    if (q.length) h += '<div class="card"><h2>Mi manca</h2><div class="grid">' + q.join("") + "</div></div>";
-    h += '<button class="btn" type="button" data-tab="scheda">Vedi la scheda</button>';
-    return h;
-  }
-
-  function setStatus(msg, err) {
-    qstatus = msg; qerr = !!err;
-    var el = $("#qstatus");
-    if (el) { el.textContent = msg; el.className = "toast" + (err ? " err" : ""); }
-  }
-  function copyFor(code) {
-    if (code === "offline") return "Serve internet per l'analisi. Intanto puoi compilare nella parte Avanzata.";
-    if (code === "rate_limited") return "Troppe richieste ravvicinate. Riprova tra qualche minuto.";
-    if (code === "images_unavailable" || code === "image_rejected") return "Non riesco a leggere l'immagine. Prova con un altro file o incolla il testo.";
-    if (code === "invalid_json" || code === "empty_completion" || code === "refused") return "Non sono riuscito a leggere bene. Aggiungi qualche dettaglio e riprova.";
-    if (code === "none" || code === "not_granted" || code === "sampling_disabled" || code === "not_declared" || code === "capability_disabled" || code === "capability_removed") return "L'analisi automatica non è disponibile qui. Compila i campi nella parte Avanzata.";
-    return "Qualcosa non ha funzionato. Riprova.";
-  }
-
-  function addQFiles(files) {
-    var msg = "", pending = 0;
-    Array.prototype.forEach.call(files || [], function (file) {
-      if (/^image\//.test(file.type)) {
-        if (!imgOK) { msg = "Le foto non si possono leggere in questa vista. Incolla il testo."; return; }
-        qfiles.push({ name: file.name || "foto", kind: "img", blob: file });
-      } else if (file.type === "text/plain" || /\.(txt|eml|csv|md)$/i.test(file.name)) {
-        pending++;
-        var fr = new FileReader();
-        fr.onload = function () { qfiles.push({ name: file.name, kind: "txt", text: String(fr.result).slice(0, 60000) }); if (--pending === 0) render(); };
-        fr.onerror = function () { if (--pending === 0) render(); };
-        fr.readAsText(file);
-      } else {
-        msg = "Questo formato non si legge ancora. Incolla il testo oppure carica uno screenshot.";
-      }
-    });
-    qstatus = msg; qerr = !!msg;
-    if (!pending) render();
-  }
-
-  /* Gergo del settore noto di serie: "termini = significato (campo: valore)". */
-  var BUILTIN = [
-    "gelato, cono, microfono a gelato, microfono a mano, radiomicrofono a mano = microfono palmare (mic: Palmare)",
-    "microfono volante, microfono per le domande, microfono per il pubblico = microfono palmare (mic: Palmare)",
-    "archetto, headset, microfono a cuffia, microfono ad archetto = microfono ad archetto (mic: Archetto)",
-    "lavalier, lavaliere, spilla, microfono a spilla, microfono a clip, microfono da petto, cravattino = microfono lavalier (mic: Lavalier)",
-    "microfono da tavolo, microfono da banco, collo d'oca, microfono da leggio = microfono da tavolo o leggio (mic: Tavolo / leggio)",
-    "gobbo, teleprompter, suggeritore = gobbo (schermi_extra: Gobbo)",
-    "confidence monitor, monitor di rimando, rimando per il relatore = monitor di rimando per i relatori (schermi_extra)",
-    "ledwall, led wall, parete led, maxischermo led, schermo led = videowall LED (schermo: Videowall LED)",
-    "beamer, videoproiettore, proiettore = proiettore (schermo: Proiettore della sala se è della location, Proiettore nostro se lo portiamo noi; se non è chiaro non compilare)",
-    "TV in foyer, monitor in ingresso, schermi nelle altre sale = TV in altre aree (schermi_extra)",
-    "clicker, pointer, presenter, telecomando slide, telecomando per le slide = avanzatore slide (avanzatore: Sì)",
-    "countdown, semaforo, timer sul palco, cronometro relatori = timer relatori (sorgenti: Timer relatori)",
-    "Slido, Mentimeter, Menti, Wooclap, Kahoot, sondaggio live, Q&A live = Slido o sondaggi dal vivo (sorgenti)",
-    "PowerPoint, PPT, Keynote, presentazione = slide (sorgenti: Slide (PowerPoint, Keynote))",
-    "filmato, video di apertura, spot, motion = video (sorgenti: Video)",
-    "sottopancia, lower third, titoli = grafiche e sottopancia (sorgenti: Grafiche e sottopancia)",
-    "diretta, live streaming, webcast = streaming (collegamento: Streaming)",
-    "Zoom, Teams, Meet, collegamento con la sede, relatore da remoto, ospite in collegamento = videocall (collegamento: Videocall)",
-    "evento ibrido, hybrid = in presenza più collegamento remoto: videocall se ci sono relatori remoti, streaming se il pubblico segue da casa",
-    "traduzione, interpreti, cabine, cuffie per la traduzione = traduzione simultanea (traduzione: Sì)",
-    "musichetta, sottofondo, background music, intro musicale = musica di sottofondo (musica: Sì)",
-    "impianto, impianto voci, casse, diffusione, PA = amplificazione (amplificazione: Sì)",
-    "pedana, palchetto = palco (palcoluci: Sì)",
-    "americana, truss, fari, teste mobili = luci (palcoluci: Sì)",
-    "transizioni pulite, passaggi puliti, cambi puliti, senza stacchi, dissolvenze, regia video, mixer video = transizioni pulite richieste (transizioni: Sì)",
-    "cambi diretti dal PC, niente regia video, non servono passaggi puliti, basta il PC = transizioni pulite non richieste (transizioni: No)",
-    "centro slide, slide center, speaker ready room = centro slide (centro_slide: Sì)",
-    "regia a fianco del palco, regia sul palco = regia vicina (regia: Vicina al palco); regia in fondo, regia dietro = regia lontana (regia: Lontana dal palco)",
-    "congresso, ECM, convegno medico, corso di formazione medica = tipo medico",
-    "laurea, seminario, aula magna, lezione = tipo universitario",
-    "convention, cena di gala, kick-off, town hall, team building, presentazione prodotto = tipo aziendale"
-  ];
-  function glossaryText() {
-    var user = (gloss || "").split("\n").map(function (l) { return l.trim(); }).filter(Boolean).join("\n").slice(0, 3000);
-    return BUILTIN.map(function (l) { return "- " + l; }).join("\n") + (user ? "\n\nTermini personali di chi usa l'app (priorità massima):\n" + user : "");
-  }
-  function glossKeys() {
-    var out = [];
-    (gloss || "").split("\n").forEach(function (l) {
-      var p = l.split("=");
-      if (p.length > 1) p[0].split(",").forEach(function (t) { t = t.trim().toLowerCase(); if (t) out.push(t); });
-    });
-    return out;
-  }
-
-  function buildPrompt(text) {
-    var lines = allFields().map(function (f) {
-      var h = f.k + ": " + f.label;
-      if (f.t === "yn") h += ' (solo "Sì" o "No")';
-      else if (f.t === "select") h += " (uno tra: " + f.opts.join(" | ") + ")";
-      else if (f.t === "multi") h += " (lista, valori ammessi: " + f.opts.join(" | ") + ")";
-      else if (f.t === "count") h += " (oggetto con il numero per tipo, chiavi ammesse: " + f.opts.join(" | ") + ')';
-      else if (f.t === "date") h += " (AAAA-MM-GG)";
-      else if (f.t === "time") h += " (HH:MM, 24 ore)";
-      else if (f.num) h += " (solo cifre)";
-      return "- " + h;
-    });
-    return "Sei l'assistente di un service audio video italiano. Ti arriva la richiesta di un'agenzia che organizza un evento: scritta a mano, incollata da una mail o fotografata. Compila la scheda tecnica con quello che c'è scritto.\n\n" +
-      "Rispondi solo con un oggetto JSON di questa forma:\n" +
-      '{"valori": {chiave: valore}, "dedotti": [chiavi], "note_extra": "frase breve", "non_capiti": [termini]}\n\n' +
-      "Regole:\n" +
-      "- In valori metti solo i campi di cui trovi un'informazione. Se non c'è, non mettere la chiave.\n" +
-      "- Puoi fare deduzioni ragionevoli e ovvie per chi lavora nel settore (es. relatori seduti a un tavolo implicano microfoni da tavolo, un collegamento con un'altra sede implica una videocall, una diretta su una piattaforma implica streaming). Ogni chiave dedotta, e non scritta in modo esplicito, va anche nella lista dedotti.\n" +
-      "- Non inventare date, nomi, numeri di persone o orari che non compaiono. Se c'è un numero di microfoni senza il tipo, non compilare mic e scrivilo in note_extra.\n" +
-      "- Per una data senza anno usa l'anno più vicino nel futuro. Oggi è " + new Date().toISOString().slice(0, 10) + ".\n" +
-      "- tipo: uno tra aziendale | medico | universitario, in base alla descrizione.\n" +
-      "- transizioni: metti Sì solo se il testo parla di regia video, mixer video, passaggi puliti o dissolvenze, No solo se dice che bastano cambi diretti o che si vuole risparmiare. Non dedurlo dalla sola presenza di più sorgenti o telecamere, perché dipende dal budget.\n" +
-      "- note_extra: altre informazioni tecniche utili che non rientrano nei campi.\n" +
-      "- Il testo usa spesso il gergo del settore. Interpreta i termini con i significati del dizionario qui sotto, che ha la precedenza sulle tue ipotesi.\n" +
-      "- Se trovi un termine tecnico o di gergo che si riferisce ad attrezzatura o allestimento e non riesci a collegarlo con sicurezza a un campo, non indovinare: mettilo in non_capiti (solo il termine, al massimo 5, mai parole comuni).\n\n" +
-      "Dizionario del settore (termini = significato):\n" + glossaryText() + "\n\nCampi (chiave: significato):\n- tipo\n" + lines.join("\n") + "\n\nMateriale ricevuto:\n" + (text || "(solo nelle immagini allegate)");
-  }
-
-  function applyExtract(r) {
-    var vals = r && r.valori && typeof r.valori === "object" ? r.valori : r;
-    var applied = {}, n = 0;
-    if (typeof vals.tipo === "string" && TIPI[vals.tipo]) { d.tipo = vals.tipo; applied.tipo = 1; n++; }
-    allFields().forEach(function (f) {
-      var v = vals[f.k];
-      if (v == null || v === "") return;
-      var ok = false;
-      if (f.t === "yn") { v = v === true ? "Sì" : v === false ? "No" : v; if (v === "Sì" || v === "No") { d[f.k] = v; ok = true; } }
-      else if (f.t === "multi") { var arr = [].concat(v).filter(function (o) { return f.opts.indexOf(o) >= 0; }); if (arr.length) { d[f.k] = arr; ok = true; } }
-      else if (f.t === "count") {
-        if (typeof v === "object" && !Array.isArray(v)) {
-          var o = {}, any = false;
-          f.opts.forEach(function (opt) { var c = parseInt(v[opt], 10); if (c > 0) { o[opt] = Math.min(c, 99); any = true; } });
-          if (any) { d[f.k] = o; ok = true; }
-        }
-      }
-      else if (f.t === "select") { if (f.opts.indexOf(v) >= 0) { d[f.k] = v; ok = true; } }
-      else if (f.t === "date") { if (/^\d{4}-\d{2}-\d{2}$/.test(String(v))) { d[f.k] = String(v); ok = true; } }
-      else if (f.t === "time") { var mt = /^(\d{1,2}):(\d{2})$/.exec(String(v)); if (mt) { d[f.k] = ("0" + mt[1]).slice(-2) + ":" + mt[2]; ok = true; } }
-      else if (f.num) { var num = String(v).replace(/[^\d]/g, ""); if (num) { d[f.k] = num; ok = true; } }
-      else { d[f.k] = String(v).slice(0, 200); ok = true; }
-      if (ok) { applied[f.k] = 1; n++; }
-    });
-    if (r && r.note_extra) { d.logistica_note = [d.logistica_note, String(r.note_extra).slice(0, 400)].filter(Boolean).join(" "); n++; }
-    var known = glossKeys();
-    d.nonCapiti = (Array.isArray(r && r.non_capiti) ? r.non_capiti : []).map(function (x) { return String(x).trim().slice(0, 40); })
-      .filter(function (x) { return x && known.indexOf(x.toLowerCase()) < 0; }).slice(0, 5);
-    d.dedotti = (Array.isArray(r && r.dedotti) ? r.dedotti : []).filter(function (k) { return applied[k]; });
-    d.qlist = missingKeys();
-    return n;
-  }
-
-  function analizza() {
-    if (busy) return;
-    var text = (d.qtext || "").trim();
-    var txt = qfiles.filter(function (f) { return f.kind === "txt"; }).map(function (f) { return "--- " + f.name + " ---\n" + f.text; }).join("\n\n");
-    var imgs = qfiles.filter(function (f) { return f.kind === "img"; }).map(function (f) { return f.blob; });
-    if (!text && !txt && !imgs.length) return setStatus("Scrivi qualcosa o aggiungi un file.", true);
-    if (!window.claude || !window.claude.use) return setStatus(copyFor("none"), true);
-    busy = true; setStatus("Sto leggendo. Può servire qualche secondo.");
-    var btn = document.querySelector('[data-act="analizza"]');
-    if (btn) { btn.disabled = true; btn.textContent = "Sto leggendo"; }
-    var my = ++runId;
-    var done = function (msg, err) { if (my !== runId) return; busy = false; qstatus = msg; qerr = !!err; render(); };
-    (sampleFn ? Promise.resolve(sampleFn) : window.claude.use("sample")).then(function (s) {
-      if (!s) throw { code: "none" };
-      sampleFn = s;
-      var opts = { modelTier: "default" };
-      if (imgs.length) { if (!imgOK) throw { code: "images_unavailable" }; opts.images = imgs; }
-      return s.json(buildPrompt([text, txt].filter(Boolean).join("\n\n")), opts);
-    }).then(function (r) {
-      if (my !== runId) return;
-      if (!r || typeof r !== "object" || Array.isArray(r)) throw { code: "invalid_json" };
-      var n = applyExtract(r);
-      d.analizzato = true; save();
-      done((sampleFn && sampleFn.demo ? "Demo: risultato d'esempio. " : "") + (n ? "Ho letto " + n + " informazioni." : "Non ho trovato informazioni chiare. Rispondi alle domande qui sotto."), !n);
-    }).catch(function (e) { done(copyFor(e && e.code), true); });
-  }
-
   /* ---------- Render ed eventi ---------- */
   function render() {
     var y = window.scrollY;
     $("#tabs").innerHTML = TABS.map(function (t) { return '<button type="button" role="tab" data-tab="' + t[0] + '" aria-selected="' + (tab === t[0]) + '">' + t[1] + "</button>"; }).join("");
-    var fn = { rapida: tabRapida, avanzata: tabAvanzata, scheda: tabScheda }[tab];
+    var fn = { avanzata: tabAvanzata, scheda: tabScheda }[tab];
     $("#panel").innerHTML = fn();
     $("#sub").textContent = d.tipo ? "Scheda tecnica · evento " + TIPI[d.tipo].nome.toLowerCase() : "Scheda tecnica";
     window.scrollTo(0, y);
@@ -580,17 +343,15 @@
     clearTimeout(noticeTimer);
     noticeTimer = setTimeout(hideNotice, 12000);
   }
-  function hideNotice() { var n = $("#notice"); clearTimeout(noticeTimer); n.hidden = true; n.innerHTML = ""; prevD = null; prevFiles = null; }
+  function hideNotice() { var n = $("#notice"); clearTimeout(noticeTimer); n.hidden = true; n.innerHTML = ""; prevD = null; }
 
   document.addEventListener("input", function (e) {
     var el = e.target;
     if (el.dataset && el.dataset.k && el.tagName !== "SELECT") { d[el.dataset.k] = el.value; save(); }
-    if (el.dataset && el.dataset.gloss) { gloss = el.value; saveGloss(); }
   });
   document.addEventListener("change", function (e) {
     var el = e.target;
     if (el.dataset && el.dataset.k && el.tagName === "SELECT") { d[el.dataset.k] = el.value; save(); render(); }
-    if (el.id === "qInput") addQFiles(el.files);
   });
   document.addEventListener("click", function (e) {
     var el = e.target.closest("button");
@@ -615,10 +376,6 @@
       if (out) out.textContent = obj[s.o];
       return;
     }
-    if (s.act === "analizza") return analizza();
-    if (s.act === "addq") return $("#qInput").click();
-    if (s.act === "esempio") { d.qtext = EXAMPLE; save(); return render(); }
-    if (s.delq) { qfiles.splice(+s.delq, 1); return render(); }
     if (s.act === "reset") {
       if (!resetArmed) {
         resetArmed = true; paintReset();
@@ -627,22 +384,13 @@
         return;
       }
       clearTimeout(resetTimer); resetArmed = false; paintReset();
-      prevD = d; prevFiles = qfiles;
-      runId++; busy = false;
-      d = blank(); qfiles = []; qstatus = ""; qerr = false; persistNow(); go("rapida");
-      return showNotice("Scheda cancellata. Il dizionario è rimasto.", true);
+      prevD = d;
+      d = blank(); persistNow(); go("avanzata");
+      return showNotice("Scheda cancellata.", true);
     }
     if (s.act === "undo") {
-      if (prevD) { runId++; busy = false; d = prevD; qfiles = prevFiles || []; hideNotice(); persistNow(); go("rapida"); }
+      if (prevD) { d = prevD; hideNotice(); persistNow(); go("avanzata"); }
       return;
-    }
-    if (s.act === "insegna") {
-      var add = [];
-      document.querySelectorAll("[data-gl]").forEach(function (inp) { var m = inp.value.trim(); if (m) add.push(inp.dataset.gl + " = " + m); });
-      if (!add.length) return setStatus("Scrivi cosa significa almeno un termine.", true);
-      gloss = (gloss ? gloss.replace(/\s+$/, "") + "\n" : "") + add.join("\n"); saveGloss();
-      d.nonCapiti = [];
-      return analizza();
     }
     if (s.act === "copy") return copyText();
     if (s.act === "pdf") return makePdf();
@@ -742,10 +490,4 @@
   }
 
   render();
-  if (window.claude && window.claude.use) {
-    window.claude.use("sample").then(function (s) {
-      sampleFn = s;
-      if (s && s.limits) s.limits().then(function (l) { imgOK = !!(l && l.images); }, function () {});
-    }, function () {});
-  }
 })();

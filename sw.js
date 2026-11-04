@@ -1,8 +1,8 @@
 /* Service worker: mette l'app in cache così si apre anche senza rete.
    Quando cambi i file, aumenta il numero di CACHE. */
-var CACHE = "rider-evento-v1";
+var CACHE = "rider-evento-v2";
 var ASSETS = [
-  "./", "index.html", "styles.css", "config.js", "shim.js", "app.js", "manifest.webmanifest",
+  "./", "index.html", "styles.css", "shim.js", "app.js", "manifest.webmanifest",
   "vendor/jspdf.umd.min.js",
   "icons/icon-192.png", "icons/icon-512.png", "icons/icon-maskable-512.png", "icons/apple-touch-icon.png",
   "fonts/barlow-condensed-latin-500-normal.woff2", "fonts/barlow-condensed-latin-600-normal.woff2", "fonts/barlow-condensed-latin-700-normal.woff2",

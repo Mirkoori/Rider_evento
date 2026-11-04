@@ -1,5 +1,0 @@
-project_id = "rider-evento"
-
-# L'app chiama il servizio dal browser, senza login: il controllo è fatto con APP_TOKEN.
-[functions.analizza]
-verify_jwt = false
