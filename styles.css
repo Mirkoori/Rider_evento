@@ -107,3 +107,4 @@ input.mono { font-family: var(--f-mono); }
 .btn.small { font-size: 16px; padding: 6px 12px; min-height: 40px; }
 .notice { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; background: var(--surface); border: 1px solid var(--line); border-left: 4px solid var(--ok); border-radius: 6px; padding: 8px 12px; font-size: 14px; }
 @media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto !important; transition: none !important; } }
+.est { margin: 0; font-size: 15px; }

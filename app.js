@@ -41,7 +41,7 @@
       { k: "insala", label: "Cosa c'è già", t: "multi", opts: ["Mixer audio", "Impianto di diffusione (casse)", "Microfoni", "Proiettore e telo", "Videowall o schermi", "Regia video (mixer video)", "Luci", "Rete cablata o Wi-Fi"], when: function (d) { return d.insala_sn === "Sì"; } }
     ]},
     { id: "audio", title: "Audio", fields: [
-      { k: "mic", label: "Microfoni: quanti e quali", t: "count", opts: ["Palmare", "Archetto", "Lavalier", "Tavolo / leggio"] },
+      { k: "mic", label: "Microfoni: quanti e quali", t: "count", opts: ["Palmare / gelato a filo", "Palmare / gelato radio", "Archetto radio", "Da tavolo a filo"] },
       { k: "amplificazione", label: "Serve impianto di amplificazione?", t: "yn", when: function (d) { return !sala(d, "Impianto"); } },
       { k: "persone_audio", label: "Persone da coprire (per calcolare le casse)", t: "text", num: true, unit: "persone", ph: "Se vuoto uso i partecipanti", when: function (d) { return d.amplificazione === "Sì" && !sala(d, "Impianto"); }, skipIf: function (d) { return !!d.pax; } },
       { k: "n_casse", label: "Numero di casse (se già deciso)", t: "text", num: true, when: function (d) { return d.amplificazione === "Sì" && !sala(d, "Impianto"); } },
@@ -96,20 +96,7 @@
   function esc(s) { return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]; }); }
 
   var saveTimer = null;
-  /* Tempo di compilazione: somma degli intervalli tra una modifica e l'altra, le pause lunghe (oltre 1 minuto) non contano. */
-  function tick() {
-    var now = Date.now();
-    if (typeof d.t_attivo !== "number") d.t_attivo = 0;
-    if (d.t_ultimo && now - d.t_ultimo < 60000) d.t_attivo += now - d.t_ultimo;
-    d.t_ultimo = now;
-  }
-  function tempoCompilazione() {
-    if (!d.t_ultimo) return "";
-    var m = Math.round((d.t_attivo || 0) / 60000);
-    return m < 1 ? "meno di 1 minuto" : m + (m === 1 ? " minuto" : " minuti");
-  }
   function save() {
-    tick();
     clearTimeout(saveTimer);
     saveTimer = setTimeout(function () {
       var st = $("#saveState");
@@ -201,10 +188,10 @@
   var NUMERI = { un: 1, uno: 1, una: 1, due: 2, tre: 3, quattro: 4, cinque: 5, sei: 6, sette: 7, otto: 8, nove: 9, dieci: 10 };
   var NUMRE = "\\d{1,2}|un|uno|una|due|tre|quattro|cinque|sei|sette|otto|nove|dieci";
   var MICS = [
-    ["Palmare", "palmar\\w*|gelat\\w*|a mano"],
-    ["Archetto", "archett\\w*|headset|madonna"],
-    ["Lavalier", "lavalier\\w*|cravatta|spilla|petto"],
-    ["Tavolo / leggio", "tavolo|leggio|collo d'oca|gooseneck"]
+    ["Palmare / gelato a filo", "(?:palmar\\w*|gelat\\w*|a mano)\\s*(?:a\\s+)?(?:filo|cavo)"],
+    ["Palmare / gelato radio", "(?:palmar\\w*|gelat\\w*|a mano)\\b(?!\\s*(?:a\\s+)?(?:filo|cavo))"],
+    ["Archetto radio", "archett\\w*|headset|madonna"],
+    ["Da tavolo a filo", "tavolo|leggio|collo d'oca|gooseneck"]
   ];
   function numVal(s) { return /^\d/.test(s) ? +s : (NUMERI[s] || 0); }
   function pad2(n) { return (n < 10 ? "0" : "") + n; }
@@ -291,7 +278,7 @@
     MICS.forEach(function (mt) {
       if (mic[mt[0]]) return;
       var a = new RegExp("\\b(" + NUMRE + ")\\s*(?:x\\s*)?(?:radio)?(?:microfon\\w*\\s*|mic\\s*)?(?:wireless\\s+|senza fili\\s+)?(?:a\\s+|ad\\s+|da\\s+)?(?:" + mt[1] + ")", "g");
-      var b = new RegExp("(?:" + mt[1] + ")[^\\d\\n]{0,14}?[:(x ]\\s*(\\d{1,2})\\b", "g");
+      var b = new RegExp("(?:" + mt[1] + ")(?:\\s+(?:radio|wireless|senza fili))?\\s*[:(x×]\\s*(\\d{1,2})\\b", "g");
       var n = 0, r;
       while ((r = a.exec(low))) n = Math.max(n, numVal(r[1]));
       while ((r = b.exec(low))) n = Math.max(n, +r[1]);
@@ -341,8 +328,24 @@
     return labels.filter(function (x, i) { return labels.indexOf(x) === i; });
   }
 
+  /* Stima del tempo che resta da dedicare alla compilazione */
+  function stima() {
+    var sec = 0, left = 0;
+    function empty(v) { return v == null || v === "" || (Array.isArray(v) && !v.length) || (typeof v === "object" && !Array.isArray(v) && !Object.keys(v).some(function (o) { return v[o]; })); }
+    var fs = [];
+    EVENT_GROUPS.forEach(function (g) { fs = fs.concat(g.fields); });
+    SECTIONS.forEach(function (s) { fs = fs.concat(s.fields.filter(visible)); });
+    if (!d.tipo) { sec += 3; left++; }
+    fs.forEach(function (f) {
+      if (f.t === "area" || (f.skipIf && f.skipIf(d)) || !empty(d[f.k])) return;
+      left++; sec += (f.t === "text" || f.t === "tel" || f.t === "date" || f.t === "time") ? 8 : 4;
+    });
+    return { min: Math.max(1, Math.round(sec / 60)), left: left };
+  }
   function tabAvanzata() {
     var h = '<div class="card"><h2>Hai una email o un testo?</h2><p class="hint">Incollalo qui: compilo quello che riconosco, senza toccare ciò che hai già scritto. Il testo resta sul dispositivo e non viene salvato.</p><textarea id="importText" placeholder="Incolla qui email, richiesta o appunti" aria-label="Email o testo da leggere"></textarea><button class="btn alt" type="button" data-act="import">Compila dal testo</button></div>';
+    var st = stima();
+    h = '<div class="card"><p class="est"><strong>' + (st.left ? "Tempo previsto: circa " + st.min + (st.min === 1 ? " minuto" : " minuti") : "Compilazione completata") + "</strong>" + (st.left ? " · " + st.left + " domande, quasi tutte da toccare. Puoi saltare quello che non serve." : "") + "</p></div>" + h;
     h += '<div class="card"><h2>Tipo di evento</h2><div class="grid">' + tipoHTML("") .replace('<span class="l"></span>', "") + "</div></div>";
     EVENT_GROUPS.forEach(function (g) {
       h += '<div class="card"><h2>' + g.title + '</h2><div class="grid">' + g.fields.map(fieldHTML).join("") + "</div></div>";
@@ -361,7 +364,6 @@
     var ev = [["Evento", d.nome], ["Tipo", d.tipo ? TIPI[d.tipo].nome : ""], ["Agenzia / cliente", d.agenzia], ["Data", fmtDate(d.data)],
       ["Partecipanti", d.pax ? d.pax + " persone" : ""], ["Location", d.location], ["Sala", d.sala],
       ["Referente", [d.ref, d.tel].filter(Boolean).join(", ")], ["Inizio montaggio", d.t_mont], ["Inizio evento", d.t_inizio], ["Fine evento", d.t_fine], ["Fine smontaggio", d.t_smont]];
-    ev.push(["Tempo di compilazione", tempoCompilazione()]);
     out.push({ title: "Evento", rows: ev.filter(function (r) { return r[1]; }) });
     SECTIONS.forEach(function (s) {
       var rows = [];
@@ -381,8 +383,8 @@
 
   function dotazione() {
     var A = [], V = [], S = [], C = [], P = [], X = [];
-    var pal = cntRe("mic", /Palmare/), arc = cntRe("mic", /Archetto/), lav = cntRe("mic", /Lavalier/), tav = cntRe("mic", /Tavolo/);
-    var wl = pal + arc + lav, mics = wl + tav;
+    var palF = cntRe("mic", /Palmare.*filo/), palR = cntRe("mic", /Palmare.*radio/), arc = cntRe("mic", /Archetto/), tav = cntRe("mic", /tavolo/i);
+    var wl = palR + arc, mics = wl + palF + tav;
     var slide = hasRe("sorgenti", /Slide/), video = hasRe("sorgenti", /^Video/), sito = hasRe("sorgenti", /Sito/),
       slido = hasRe("sorgenti", /Slido/), graf = hasRe("sorgenti", /Grafiche/), timer = hasRe("sorgenti", /Timer/);
     var pcAudio = slide || video || sito;
@@ -403,10 +405,10 @@
     if (paSala && !mixSala && ch > 0) A.push("Collegamento dal nostro mixer all'impianto della sala: verificare ingressi e tipo di linea (XLR, jack o altro)");
     if (micSala && mics > 0) A.push("Microfoni forniti dalla sala: " + fmt(fieldByKey("mic"), d.mic) + ". Verificare tipo, funzionamento e batterie");
     else {
-      if (pal) A.push("Microfoni palmari wireless × " + pal + ", con clip e aste");
-      if (arc) A.push("Microfoni ad archetto wireless × " + arc);
-      if (lav) A.push("Microfoni lavalier wireless × " + lav + ", con clip e fissaggi");
-      if (tav) A.push("Microfoni da tavolo o leggio × " + tav + ", con basi, aste e cavi XLR");
+      if (palR) A.push("Microfoni palmari radio × " + palR + ", con clip e aste");
+      if (palF) A.push("Microfoni palmari a filo × " + palF + ", con cavi XLR e aste");
+      if (arc) A.push("Microfoni ad archetto radio × " + arc);
+      if (tav) A.push("Microfoni da tavolo a filo × " + tav + ", con basi, aste e cavi XLR");
       if (wl) {
         A.push("Ricevitori wireless × " + wl + ", con antenne e distribuzione RF (frequenze da coordinare con la sala)");
         A.push("Batterie di scorta e caricabatterie per tutti i trasmettitori");
